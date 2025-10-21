@@ -1,0 +1,40 @@
+@page "/domains"
+@using DefaultNamespace
+@inject MailTmClient Api
+
+<h3>mail.tm domains</h3>
+
+@if (error is not null)
+{
+    <p class="text-danger">@error</p>
+}
+else if (domains is null)
+{
+    <p>Loading…</p>
+}
+else
+{
+    <ul>
+        @foreach (var d in domains)
+        {
+            <li>@d.Domain</li>
+        }
+    </ul>
+}
+
+@code {
+    List<MailTmClient.DomainItem>? domains;
+    string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            (domains, _) = await Api.GetDomainsAsync();
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+    }
+}
