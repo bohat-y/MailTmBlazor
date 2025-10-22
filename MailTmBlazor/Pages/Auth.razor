@@ -1,0 +1,133 @@
+@page "/auth"
+@using System.Net
+@inject MailTmBlazor.Application.Abstractions.IAuthService AuthService
+@inject MailTmBlazor.Application.Abstractions.IMailboxService Mail
+@inject NavigationManager Nav
+
+<h3>Sign in to Temporary Mail</h3>
+
+@if (loading)
+{
+  <p>Loading domains…</p>
+}
+else if (error is not null)
+{
+  <p class="text-danger">@error</p>
+}
+else
+{
+  <EditForm Model="this" OnValidSubmit="RegisterThenLoginAsync">
+    <div class="mb-2">
+      <label>Username</label>
+      <InputText @bind-Value="username" class="form-control" />
+      <small class="text-muted">We’ll append the domain.</small>
+    </div>
+
+    <div class="mb-2">
+      <label>Password</label>
+      <InputText @bind-Value="password" Type="password" class="form-control" />
+    </div>
+
+    <div class="mb-3">
+      <label>Domain</label>
+      @if (domains?.Count == 1)
+      {
+        <div class="form-control-plaintext">@domains[0].Domain</div>
+        <input type="hidden" value="@domains[0].Domain" />
+      }
+      else
+      {
+        <InputSelect @bind-Value="selectedDomain" class="form-select">
+          @foreach (var d in domains!)
+          {
+            <option value="@d.Domain">@d.Domain</option>
+          }
+        </InputSelect>
+      }
+    </div>
+
+    <div class="mb-3">
+      <strong>Email preview:</strong> @ComposedAddress
+    </div>
+
+    <button type="submit" class="btn btn-primary" disabled="@submitting">
+      @(submitting ? "Signing in…" : "Register & Sign in")
+    </button>
+
+    @if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+      <p class="text-danger mt-2">@errorMessage</p>
+    }
+  </EditForm>
+}
+
+@code {
+  List<MailTmBlazor.Domain.Entities.DomainName>? domains;
+  string? selectedDomain;
+  string username = "";
+  string password = "";
+  bool loading = true;
+  bool submitting = false;
+  string? error;
+  string? errorMessage;
+
+  string ComposedAddress => string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(selectedDomain)
+    ? "(enter username)"
+    : $"{username}@{selectedDomain}";
+
+  protected override async Task OnInitializedAsync()
+  {
+    try
+    {
+      domains = (await Mail.GetDomainsAsync()).ToList();
+      selectedDomain ??= domains.FirstOrDefault()?.Domain;
+    }
+    catch (Exception ex)
+    {
+      error = ex.Message;
+    }
+    finally
+    {
+      loading = false;
+    }
+  }
+
+  private async Task RegisterThenLoginAsync()
+  {
+    errorMessage = null;
+    if (string.IsNullOrWhiteSpace(selectedDomain))
+    {
+      errorMessage = "No domain available.";
+      return;
+    }
+
+    var address = $"{username}@{selectedDomain}";
+    submitting = true;
+    try
+    {
+      // 1) Try to create an account (ignore 409 if already exists)
+      try
+      {
+        _ = await AuthService.RegisterAsync(address, password);
+      }
+      catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Conflict)
+      {
+        // account already exists — proceed to login
+      }
+
+      // 2) Login (this will fetch /me and store token+account in localStorage["account"])
+      await AuthService.LoginAsync(address, password);
+
+      // 3) Navigate to profile
+      Nav.NavigateTo("/me", forceLoad: true);
+    }
+    catch (Exception ex)
+    {
+      errorMessage = ex.Message;
+    }
+    finally
+    {
+      submitting = false;
+    }
+  }
+}
