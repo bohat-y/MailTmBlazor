@@ -1,0 +1,48 @@
+@page "/me"
+@inject MailTmBlazor.Application.Abstractions.IAuthService Auth
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<h3>Account</h3>
+
+@if (loading)
+{
+    <p>Loading…</p>
+}
+else if (error is not null)
+{
+    <p class="text-danger">@error</p>
+}
+else if (me is not null)
+{
+    <p><strong>Address:</strong> @me.Address</p>
+    <p><strong>Usage:</strong> @me.Used / @me.Quota bytes</p>
+
+    <button class="btn btn-secondary me-2" @onclick="Copy">Copy address</button>
+    <button class="btn btn-outline-danger" @onclick="Logout">Logout</button>
+}
+
+@code {
+    MailTmBlazor.Domain.Entities.Account? me;
+    bool loading = true;
+    string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { me = await Auth.MeAsync(); }
+        catch (Exception ex) { error = ex.Message; }
+        finally { loading = false; }
+    }
+
+    private async Task Copy()
+    {
+        if (me is null) return;
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", me.Address);
+    }
+
+    private async Task Logout()
+    {
+        await Auth.LogoutAsync();
+        Nav.NavigateTo("/auth", forceLoad: true);
+    }
+}

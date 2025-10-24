@@ -1,0 +1,21 @@
+@page "/domains"
+@inject MailTmBlazor.Application.Abstractions.IMailboxService Mail
+
+<h3>mail.tm domains</h3>
+
+@if (domains is null)
+{
+    <p>Loading…</p>
+}
+else
+{
+    <ul>
+        @foreach (var d in domains) { <li>@d.Domain</li> }
+    </ul>
+}
+
+@code {
+    List<MailTmBlazor.Domain.Entities.DomainName>? domains;
+    protected override async Task OnInitializedAsync()
+        => domains = (await Mail.GetDomainsAsync()).ToList();
+}
