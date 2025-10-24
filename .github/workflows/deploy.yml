@@ -20,13 +20,13 @@ jobs:
           dotnet-version: 9.0.x
 
       - name: Restore
-        run: dotnet restore MailTmBlazor/MailTmBlazor.sln
+        run: dotnet restore MailTmBlazor.sln
 
       - name: Build
-        run: dotnet build MailTmBlazor/MailTmBlazor.sln --configuration Release --no-restore
+        run: dotnet build MailTmBlazor.sln --configuration Release --no-restore
 
       - name: Publish
-        run: dotnet publish MailTmBlazor/MailTmBlazor/MailTmBlazor/MailTmBlazor.csproj --configuration Release --no-build --output published
+        run: dotnet publish MailTmBlazor/MailTmBlazor.csproj --configuration Release --no-build --output published
 
       - name: Deploy to Azure App Service
         uses: azure/webapps-deploy@v3
