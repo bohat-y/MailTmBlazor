@@ -28,9 +28,65 @@ jobs:
       - name: Publish
         run: dotnet publish MailTmBlazor/MailTmBlazor.csproj --configuration Release --no-build --output published
 
+      - name: Sanity check publish output
+        run: |
+          ls -R published/wwwroot | head
+          test -f published/wwwroot/index.html
+          test -d published/wwwroot/_framework
+
+      - name: Package static site
+        run: |
+          cd published/wwwroot
+          zip -r ../../published.zip .
+
+      - name: Extract SCM credentials
+        id: kudu-creds
+        if: github.event_name != 'pull_request'
+        env:
+          AZURE_WEBAPP_PUBLISH_PROFILE: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+        run: |
+          python - <<'PY'
+          import xml.etree.ElementTree as ET
+          import os
+          from urllib.parse import urlsplit
+
+          profile = os.environ["AZURE_WEBAPP_PUBLISH_PROFILE"]
+          root = ET.fromstring(profile)
+
+          zip_profile = next(p for p in root if p.get("publishMethod") == "ZipDeploy")
+
+          username = zip_profile.get("userName")
+          password = zip_profile.get("userPWD")
+          scm_url = zip_profile.get("scmUri")
+
+          if not scm_url:
+              publish_url = zip_profile.get("publishUrl")
+              if not publish_url:
+                  raise RuntimeError("publish profile missing scmUri and publishUrl")
+              parsed = urlsplit(publish_url)
+              scm_url = f"{parsed.scheme}://{parsed.netloc}"
+
+          print(f"::add-mask::{password}")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+              fh.write(f"username={username}\n")
+              fh.write(f"password={password}\n")
+              fh.write(f"scm_url={scm_url.rstrip('/')}\n")
+          PY
+
       - name: Deploy to Azure App Service
         uses: azure/webapps-deploy@v3
+        if: github.event_name != 'pull_request'
         with:
           app-name: MailTmBlazor
           publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
-          package: published
+          package: published.zip
+
+      - name: Verify deployment content
+        if: github.event_name != 'pull_request'
+        run: |
+          curl -fsS -u "${{ steps.kudu-creds.outputs.username }}:${{ steps.kudu-creds.outputs.password }}" "${{ steps.kudu-creds.outputs.scm_url }}/api/vfs/site/wwwroot/index.html" \
+            | tee deployed-index.html \
+            | head
+          ! grep -q "Your web app is running and waiting for your content" deployed-index.html
+          rm deployed-index.html
