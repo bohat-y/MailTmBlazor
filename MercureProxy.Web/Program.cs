@@ -13,7 +13,7 @@ builder.Services.AddCors(options =>
     options.AddPolicy("Spa", policy =>
         policy.WithOrigins(
                 "http://localhost:5004",
-                "https://mailtmblazor.azurewebsites.net")
+                "https://mailtmblazor-abghg7bggth2fkbg.switzerlandnorth-01.azurewebsites.net")
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials());
