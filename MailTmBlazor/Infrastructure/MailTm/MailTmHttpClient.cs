@@ -98,7 +98,11 @@ public sealed class MailTmHttpClient : IAuthService, IMailboxService
     public async Task MarkSeenAsync(string id, bool seen = true)
     {
         await EnsureAuthAsync();
-        var req = new HttpRequestMessage(HttpMethod.Patch, $"messages/{id}") { Content = JsonContent.Create(new { seen }) };
+        var content = JsonContent.Create(
+            new { seen },
+            mediaType: new MediaTypeHeaderValue("application/merge-patch+json"),
+            options: Json);
+        var req = new HttpRequestMessage(HttpMethod.Patch, $"messages/{id}") { Content = content };
         var res = await _http.SendAsync(req);
         res.EnsureSuccessStatusCode();
     }
