@@ -1,0 +1,133 @@
+@page "/inbox"
+@inject MailTmBlazor.Application.Abstractions.IMailboxService Mail
+@inject MailTmBlazor.Infrastructure.Auth.IAccountSession Session
+@inject MailTmBlazor.Infrastructure.Realtime.InboxRealtimeClient Realtime
+@inject NavigationManager Nav
+@inject IWebAssemblyHostEnvironment HostEnv
+@implements IAsyncDisposable
+
+<h3>Inbox</h3>
+
+<div class="small text-muted mb-2">
+  <strong>Mercure:</strong> @status
+  @if (lastEventAt is not null) { <span> • Last event: @lastEventAt?.ToLocalTime()</span> }
+</div>
+
+@if (loading) { <p>Loading…</p> }
+else if (!string.IsNullOrEmpty(error)) { <p class="text-danger">@error</p> }
+else
+{
+  <div class="mb-2">
+    <button class="btn btn-sm btn-secondary me-2" @onclick="Refresh">Refresh</button>
+    <button class="btn btn-sm btn-outline-primary" @onclick="TriggerEvent" disabled="@(!items.Any())">Trigger event (toggle seen)</button>
+  </div>
+
+  @if (!items.Any()) { <p>No messages.</p> }
+  else
+  {
+    <ul class="list-group">
+      @foreach (var m in items)
+      {
+        <li class="list-group-item d-flex justify-content-between">
+          <div>
+            @if (!m.Seen) { <span class="badge bg-primary me-2">unread</span> }
+            <strong>@m.Subject</strong>
+            <div class="text-muted small">
+              @m.FromAddress • @m.CreatedAt.ToLocalTime()
+            </div>
+          </div>
+          <div class="btn-group btn-group-sm">
+            @if (!m.Seen) { <button class="btn btn-outline-success" @onclick="() => MarkRead(m.Id)">Mark read</button> }
+            <button class="btn btn-outline-danger" @onclick="() => DeleteMessage(m.Id)">Delete</button>
+          </div>
+        </li>
+      }
+    </ul>
+  }
+}
+
+@code {
+  private List<MailTmBlazor.Domain.Entities.Message> items = new();
+  private string status = "disconnected";
+  private DateTimeOffset? lastEventAt;
+  private bool loading = true;
+  private string? error;
+
+  protected override async Task OnInitializedAsync()
+  {
+    var snap = await Session.GetAsync();
+    if (snap is null) { Nav.NavigateTo("/auth", true); return; }
+
+    await LoadInbox(showSpinner: true);
+
+    status = "connecting…";
+
+    var realtimeBase = HostEnv.IsDevelopment()
+      ? "http://localhost:5175"
+      : "https://mailtm-mercure-proxy.azurewebsites.net";
+
+    await Realtime.StartAsync(
+      realtimeBase,
+      snap.Id,
+      snap.Token,
+      async () =>
+      {
+        status = "connected";
+        lastEventAt = DateTimeOffset.Now;
+        await LoadInbox();
+        await InvokeAsync(StateHasChanged);
+      });
+    status = "connected";
+  }
+
+  private async Task LoadInbox(bool showSpinner = false)
+  {
+    if (showSpinner)
+    {
+      loading = true;
+      await InvokeAsync(StateHasChanged);
+    }
+
+    try
+    {
+      error = null;
+      var res = await Mail.GetMessagesAsync(1);
+      items = res.Items.ToList();
+    }
+    catch (Exception ex)
+    {
+      error = ex.Message;
+      status = "error";
+    }
+    finally
+    {
+      loading = false;
+      await InvokeAsync(StateHasChanged);
+    }
+  }
+
+  private async Task Refresh() => await LoadInbox(showSpinner: true);
+
+  private async Task TriggerEvent()
+  {
+    // toggles seen on the first message -> hub publishes -> status timestamp updates
+    var first = items.FirstOrDefault();
+    if (first is null) return;
+    await Mail.MarkSeenAsync(first.Id, seen: !first.Seen);
+    await LoadInbox();
+  }
+
+  private async Task MarkRead(string id)
+  {
+    await Mail.MarkSeenAsync(id, true);
+    await LoadInbox();
+  }
+
+  private async Task DeleteMessage(string id)
+  {
+    await Mail.DeleteAsync(id);
+    await LoadInbox();
+  }
+
+  public async ValueTask DisposeAsync() => await Realtime.DisposeAsync();
+}
