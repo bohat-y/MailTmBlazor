@@ -25,19 +25,25 @@ jobs:
       - name: Build
         run: dotnet build MailTmBlazor.sln --configuration Release --no-restore
 
-      - name: Publish
-        run: dotnet publish MailTmBlazor/MailTmBlazor.csproj --configuration Release --no-build --output published
+      - name: Publish frontend
+        run: dotnet publish MailTmBlazor/MailTmBlazor.csproj --configuration Release --no-build --output artifacts/frontend
 
-      - name: Sanity check publish output
-        run: |
-          ls -R published/wwwroot | head
-          test -f published/wwwroot/index.html
-          test -d published/wwwroot/_framework
+      - name: Publish proxy
+        run: dotnet publish MercureProxy.Web/MercureProxy.Web.csproj --configuration Release --no-build --output artifacts/proxy
 
-      - name: Package static site
+      - name: Sanity check frontend output
         run: |
-          cd published/wwwroot
-          zip -r ../../published.zip .
+          ls -R artifacts/frontend/wwwroot | head
+          test -f artifacts/frontend/wwwroot/index.html
+          test -d artifacts/frontend/wwwroot/_framework
+
+      - name: Package frontend
+        working-directory: artifacts/frontend/wwwroot
+        run: zip -r ../../frontend.zip .
+
+      - name: Package proxy
+        working-directory: artifacts/proxy
+        run: zip -r ../proxy.zip .
 
       - name: Extract SCM credentials
         id: kudu-creds
@@ -49,38 +55,46 @@ jobs:
           import xml.etree.ElementTree as ET
           import os
           from urllib.parse import urlsplit
-
+          
           profile = os.environ["AZURE_WEBAPP_PUBLISH_PROFILE"]
           root = ET.fromstring(profile)
-
+          
           zip_profile = next(p for p in root if p.get("publishMethod") == "ZipDeploy")
-
+          
           username = zip_profile.get("userName")
           password = zip_profile.get("userPWD")
           scm_url = zip_profile.get("scmUri")
-
+          
           if not scm_url:
               publish_url = zip_profile.get("publishUrl")
               if not publish_url:
                   raise RuntimeError("publish profile missing scmUri and publishUrl")
               parsed = urlsplit(publish_url)
               scm_url = f"{parsed.scheme}://{parsed.netloc}"
-
+          
           print(f"::add-mask::{password}")
-
+          
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
               fh.write(f"username={username}\n")
               fh.write(f"password={password}\n")
               fh.write(f"scm_url={scm_url.rstrip('/')}\n")
           PY
 
-      - name: Deploy to Azure App Service
-        uses: azure/webapps-deploy@v3
+      - name: Deploy frontend
         if: github.event_name != 'pull_request'
+        uses: azure/webapps-deploy@v3
         with:
           app-name: MailTmBlazor
           publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
-          package: published.zip
+          package: artifacts/frontend.zip
+
+      - name: Deploy proxy
+        if: github.event_name != 'pull_request'
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: mailtmblazor-proxy
+          publish-profile: ${{ secrets.AZURE_PROXY_PUBLISH_PROFILE }}
+          package: artifacts/proxy.zip
 
       - name: Verify deployment content
         if: github.event_name != 'pull_request'
