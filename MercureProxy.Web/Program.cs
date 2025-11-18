@@ -1,19 +1,29 @@
 using System.Collections.Generic;
-using System.Threading;
 using System.Security.Claims;
+using System.Threading;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Azure.SignalR;
 using Microsoft.Azure.SignalR.Management;
+using Microsoft.Extensions.Logging;
 using MercureProxy.Web.Realtime;
+using System.Net.Http.Headers;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Logging.ClearProviders();
+builder.Logging.AddSimpleConsole(options =>
+{
+    options.TimestampFormat = "HH:mm:ss ";
+    options.SingleLine = true;
+});
+
+var spaOrigins = builder.Configuration.GetSection("Spa:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
 
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("Spa", policy =>
-        policy.WithOrigins(
-                "http://localhost:5004",
-                "https://mailtmblazor-abghg7bggth2fkbg.switzerlandnorth-01.azurewebsites.net")
+        policy.WithOrigins(spaOrigins)
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials());
@@ -35,10 +45,20 @@ builder.Services.AddSingleton<HubService>(sp =>
     return new HubService(context);
 });
 
+var mailTmSection = builder.Configuration.GetSection("MailTm");
+var mercureBase = mailTmSection["MercureBaseUrl"] ?? throw new InvalidOperationException("MailTm:MercureBaseUrl not configured");
+var mailApiBase = mailTmSection["ApiBaseUrl"] ?? throw new InvalidOperationException("MailTm:ApiBaseUrl not configured");
+
 builder.Services.AddHttpClient("mercure", client =>
 {
-    client.BaseAddress = new Uri("https://mercure.mail.tm/");
+    client.BaseAddress = new Uri(mercureBase);
     client.Timeout = Timeout.InfiniteTimeSpan;
+});
+
+builder.Services.AddHttpClient("mailtm-api", client =>
+{
+    client.BaseAddress = new Uri(mailApiBase);
+    client.Timeout = TimeSpan.FromSeconds(15);
 });
 
 builder.Services.AddSingleton<MercureSubscriptionManager>();
@@ -54,21 +74,47 @@ app.MapMethods("/api/negotiate", new[] { "OPTIONS" }, () => Results.NoContent())
 app.MapPost("/api/negotiate", async (
     NegotiateRequest request,
     MercureSubscriptionManager subscriptions,
-    HubService hubService) =>
+    HubService hubService,
+    IHttpClientFactory httpClientFactory,
+    ILogger<Program> logger) =>
 {
     if (string.IsNullOrWhiteSpace(request.AccountId) || string.IsNullOrWhiteSpace(request.Token))
     {
+        logger.LogWarning("Negotiate request missing accountId or token");
         return Results.BadRequest("accountId and token are required");
     }
 
-    subscriptions.SetToken(request.AccountId, request.Token);
-
-    var negotiate = await hubService.NegotiateAsync(new NegotiationOptions
+    try
     {
-        Claims = new List<Claim> { new("accountId", request.AccountId) }
-    });
+        // Validate the token against mail.tm so bogus requests fail fast.
+        var apiClient = httpClientFactory.CreateClient("mailtm-api");
+        apiClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", request.Token);
+        var validationResponse = await apiClient.GetAsync("me");
+        if (!validationResponse.IsSuccessStatusCode)
+        {
+            var body = await validationResponse.Content.ReadAsStringAsync();
+            logger.LogWarning(
+                "Token validation failed for {AccountId} with {Status}: {Body}",
+                request.AccountId,
+                (int)validationResponse.StatusCode,
+                body);
+            return Results.StatusCode((int)validationResponse.StatusCode);
+        }
 
-    return Results.Ok(new NegotiateResponse(negotiate.Url, negotiate.AccessToken));
+        subscriptions.SetToken(request.AccountId, request.Token);
+
+        var negotiate = await hubService.NegotiateAsync(new NegotiationOptions
+        {
+            Claims = new List<Claim> { new("accountId", request.AccountId) }
+        });
+
+        return Results.Ok(new NegotiateResponse(negotiate.Url ?? string.Empty, negotiate.AccessToken ?? string.Empty));
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Failed to negotiate SignalR connection for {AccountId}", request.AccountId);
+        return Results.StatusCode(StatusCodes.Status500InternalServerError);
+    }
 });
 
-app.Run();
+await app.RunAsync();

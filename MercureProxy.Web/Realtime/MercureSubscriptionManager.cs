@@ -141,7 +141,17 @@ public sealed class MercureSubscriptionManager
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
         using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync();
+            _logger.LogWarning("Mercure stream for {AccountId} failed with {Status}: {Body}",
+                accountId,
+                (int)response.StatusCode,
+                body);
+            response.EnsureSuccessStatusCode();
+        }
+
+        _logger.LogInformation("Mercure stream opened for {AccountId}", accountId);
 
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var reader = new StreamReader(stream, Encoding.UTF8, false, 8 * 1024);
@@ -179,6 +189,8 @@ public sealed class MercureSubscriptionManager
 
             sb.Append(line).Append('\n');
         }
+
+        _logger.LogInformation("Mercure stream for {AccountId} ended", accountId);
     }
 
     private sealed class Subscription

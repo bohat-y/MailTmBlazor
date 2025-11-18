@@ -12,10 +12,10 @@ public static class MailTmMapper
         new(a.Id, a.Address, a.Quota, a.Used, a.IsDisabled, a.IsDeleted, a.CreatedAt, a.UpdatedAt);
 
     public static Message ToDomain(this MessageListItemDto m) =>
-        new(m.Id, m.Subject, m.Seen, m.Intro, m.From?.Name ?? "", m.From.Address, m.CreatedAt, m.HasAttachments);
+        new(m.Id, m.Subject, m.Seen, m.Intro, m.From?.Name ?? string.Empty, m.From?.Address ?? string.Empty, m.CreatedAt, m.HasAttachments);
 
     public static Message ToDomain(this MessageDetailDto d) =>
-        new(d.Id, d.Subject, d.Seen, "", d.From?.Name ?? "", d.From.Address, d.CreatedAt, d.HasAttachments,
+        new(d.Id, d.Subject, d.Seen, string.Empty, d.From?.Name ?? string.Empty, d.From?.Address ?? string.Empty, d.CreatedAt, d.HasAttachments,
             d.Text, d.Html,
             d.Attachments?.Select(a => new Attachment(a.Id, a.Filename, a.ContentType, a.DownloadUrl, a.Size)).ToList());
 }
