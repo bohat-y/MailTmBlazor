@@ -3,7 +3,7 @@
 @inject MailTmBlazor.Infrastructure.Auth.IAccountSession Session
 @inject MailTmBlazor.Infrastructure.Realtime.InboxRealtimeClient Realtime
 @inject NavigationManager Nav
-@inject IWebAssemblyHostEnvironment HostEnv
+@inject MailTmBlazor.Infrastructure.MailTm.MailTmEndpoints Endpoints
 @implements IAsyncDisposable
 
 <h3>Inbox</h3>
@@ -62,9 +62,7 @@ else
 
     status = "connecting…";
 
-    var realtimeBase = HostEnv.IsDevelopment()
-      ? "http://localhost:5175"
-      : "https://mailtmblazor-proxy-hneyefcycsd3geh5.switzerlandnorth-01.azurewebsites.net";
+    var realtimeBase = Endpoints.ProxyBaseUrl;
 
     await Realtime.StartAsync(
       realtimeBase,
