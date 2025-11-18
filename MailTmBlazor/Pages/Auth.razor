@@ -3,6 +3,7 @@
 @inject MailTmBlazor.Application.Abstractions.IAuthService AuthService
 @inject MailTmBlazor.Application.Abstractions.IMailboxService Mail
 @inject NavigationManager Nav
+@inject ILogger<Auth> Logger
 
 <h3>Sign in to Temporary Mail</h3>
 
@@ -106,14 +107,7 @@ else
     try
     {
       // 1) Try to create an account (ignore 409 if already exists)
-      try
-      {
-        _ = await AuthService.RegisterAsync(address, password);
-      }
-      catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Conflict)
-      {
-        // account already exists — proceed to login
-      }
+      _ = await AuthService.RegisterAsync(address, password);
 
       // 2) Login (this will fetch /me and store token+account in localStorage["account"])
       await AuthService.LoginAsync(address, password);
@@ -121,8 +115,21 @@ else
       // 3) Navigate to profile
       Nav.NavigateTo("/me", forceLoad: true);
     }
+    catch (MailTmApiException apiEx)
+    {
+      Logger.LogWarning(apiEx, "Auth flow failed for {Address} with {Status}", address, apiEx.StatusCode);
+      errorMessage = apiEx.StatusCode switch
+      {
+        HttpStatusCode.UnprocessableEntity => "That alias is invalid or already exists.",
+        HttpStatusCode.TooManyRequests => "Too many requests — please wait a moment and retry.",
+        HttpStatusCode.BadRequest => "The request was rejected. Double-check your input and try again.",
+        HttpStatusCode.Unauthorized => "Invalid email or password.",
+        _ => apiEx.Message
+      };
+    }
     catch (Exception ex)
     {
+      Logger.LogError(ex, "Unexpected auth failure for {Address}", address);
       errorMessage = ex.Message;
     }
     finally
