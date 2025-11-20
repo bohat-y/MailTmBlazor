@@ -4,6 +4,7 @@
 @inject MailTmBlazor.Application.Abstractions.IMailboxService Mail
 @inject NavigationManager Nav
 @inject ILogger<Auth> Logger
+@using System.ComponentModel.DataAnnotations
 
 <h3>Sign in to Temporary Mail</h3>
 
@@ -17,16 +18,24 @@ else if (error is not null)
 }
 else
 {
-  <EditForm Model="this" OnValidSubmit="RegisterThenLoginAsync">
+  <EditForm EditContext="editContext" OnValidSubmit="RegisterThenLoginAsync">
+    <DataAnnotationsValidator />
     <div class="mb-2">
       <label>Username</label>
-      <InputText @bind-Value="username" class="form-control" />
+      <input class="form-control"
+             value="@form.Username"
+             @oninput="OnUsernameInput" />
+      <ValidationMessage For="() => form.Username" />
       <small class="text-muted">We’ll append the domain.</small>
     </div>
 
     <div class="mb-2">
       <label>Password</label>
-      <InputText @bind-Value="password" Type="password" class="form-control" />
+      <input class="form-control"
+             type="password"
+             value="@form.Password"
+             @oninput="OnPasswordInput" />
+      <ValidationMessage For="() => form.Password" />
     </div>
 
     <div class="mb-3">
@@ -65,16 +74,21 @@ else
 @code {
   List<MailTmBlazor.Domain.Entities.DomainName>? domains;
   string? selectedDomain;
-  string username = "";
-  string password = "";
+  private readonly AuthFormModel form = new();
+  private EditContext editContext = default!;
   bool loading = true;
   bool submitting = false;
   string? error;
   string? errorMessage;
 
-  string ComposedAddress => string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(selectedDomain)
+  protected override void OnInitialized()
+  {
+    editContext = new EditContext(form);
+  }
+
+  string ComposedAddress => string.IsNullOrWhiteSpace(form.Username) || string.IsNullOrWhiteSpace(selectedDomain)
     ? "(enter username)"
-    : $"{username}@{selectedDomain}";
+    : $"{form.Username}@{selectedDomain}";
 
   protected override async Task OnInitializedAsync()
   {
@@ -102,15 +116,20 @@ else
       return;
     }
 
-    var address = $"{username}@{selectedDomain}";
+    if (!editContext.Validate())
+    {
+      return;
+    }
+
+    var address = $"{form.Username}@{selectedDomain}";
     submitting = true;
     try
     {
       // 1) Try to create an account (ignore 409 if already exists)
-      _ = await AuthService.RegisterAsync(address, password);
+      _ = await AuthService.RegisterAsync(address, form.Password);
 
       // 2) Login (this will fetch /me and store token+account in localStorage["account"])
-      await AuthService.LoginAsync(address, password);
+      await AuthService.LoginAsync(address, form.Password);
 
       // 3) Navigate to profile
       Nav.NavigateTo("/me", forceLoad: true);
@@ -137,4 +156,23 @@ else
       submitting = false;
     }
   }
+
+  private void OnUsernameInput(ChangeEventArgs args)
+  {
+    form.Username = args.Value?.ToString() ?? string.Empty;
+    NotifyFieldChanged(nameof(AuthFormModel.Username));
+  }
+
+  private void OnPasswordInput(ChangeEventArgs args)
+  {
+    form.Password = args.Value?.ToString() ?? string.Empty;
+    NotifyFieldChanged(nameof(AuthFormModel.Password));
+  }
+
+  private void NotifyFieldChanged(string fieldName)
+  {
+    var fieldIdentifier = new FieldIdentifier(form, fieldName);
+    editContext.NotifyFieldChanged(fieldIdentifier);
+  }
+
 }
