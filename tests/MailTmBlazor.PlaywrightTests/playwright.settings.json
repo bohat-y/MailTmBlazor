@@ -1,0 +1,4 @@
+{
+  "$schema": "https://playwright.microsoft.com/schema/playwright-settings.schema.json",
+  "useBaseLibrary": true
+}

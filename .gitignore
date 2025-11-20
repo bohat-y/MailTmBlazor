@@ -479,6 +479,10 @@ $RECYCLE.BIN/
 
 # Windows shortcuts
 *.lnk
+.playwright-tools/
+tests/playwright-js/node_modules/
+tests/playwright-js/test-results/
+tests/playwright-js/playwright-report/
 
 # Vim temporary swap files
 *.swp

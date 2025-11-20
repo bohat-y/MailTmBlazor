@@ -1,0 +1,16 @@
+{
+  "name": "mailtmblazor-playwright",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.47.2",
+    "@types/node": "^24.10.1",
+    "typescript": "^5.4.0"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.3"
+  }
+}

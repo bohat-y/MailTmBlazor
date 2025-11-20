@@ -1,0 +1,80 @@
+name: Tests
+
+on:
+  push:
+    branches: [ main, 'feature/**' ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      DOTNET_NOLOGO: true
+      PLAYWRIGHT_BASE_URL: ${{ secrets.PLAYWRIGHT_BASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Restore
+        run: dotnet restore MailTmBlazor.sln
+
+      - name: Build
+        run: dotnet build MailTmBlazor.sln --configuration Release --no-restore
+
+      - name: Publish Blazor app
+        run: dotnet publish MailTmBlazor/MailTmBlazor.csproj --configuration Release --no-build --output artifacts/frontend
+
+      - name: Run unit tests
+        run: dotnet test tests/MailTmBlazor.Tests/MailTmBlazor.Tests.csproj --configuration Release --no-build
+
+      - name: Ensure PLAYWRIGHT_BASE_URL is set
+        run: |
+          if [ -z "${PLAYWRIGHT_BASE_URL:-}" ]; then
+            echo "PLAYWRIGHT_BASE_URL is not configured. Set the secret or export it before running Playwright tests."
+            exit 1
+          fi
+
+      - name: Serve Blazor app
+        if: env.PLAYWRIGHT_BASE_URL == 'http://localhost:5004'
+        env:
+          MailTm__ProxyBaseUrl: https://mailtmblazor-proxy-hneyefcycsd3geh5.switzerlandnorth-01.azurewebsites.net
+        run: |
+          npx serve -s artifacts/frontend/wwwroot -l tcp://127.0.0.1:5004 > spa.log 2>&1 &
+          echo $! > spa.pid
+
+      - name: Wait for local app
+        if: env.PLAYWRIGHT_BASE_URL == 'http://localhost:5004'
+        run: |
+          timeout 60 bash -c 'until curl -fsS http://localhost:5004 > /dev/null; do sleep 2; done'
+
+      - name: Install Playwright browsers
+        run: pwsh tests/MailTmBlazor.PlaywrightTests/bin/Release/net9.0/playwright.ps1 install --with-deps
+
+      - name: Run Playwright tests
+        run: dotnet test tests/MailTmBlazor.PlaywrightTests/MailTmBlazor.PlaywrightTests.csproj --configuration Release --no-build
+
+      - name: Install Node Playwright dependencies
+        working-directory: tests/playwright-js
+        run: |
+          npm install
+          npx playwright install --with-deps
+
+      - name: Run Node Playwright tests
+        working-directory: tests/playwright-js
+        run: npx playwright test
+
+      - name: Stop SPA server
+        if: always() && env.PLAYWRIGHT_BASE_URL == 'http://localhost:5004'
+        run: |
+          if [ -f spa.pid ]; then kill $(cat spa.pid) 2>/dev/null || true; fi
+          cat spa.log || true
