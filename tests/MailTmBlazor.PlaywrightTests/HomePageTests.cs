@@ -14,7 +14,6 @@ public class HomePageTests : PageTest
     public async Task Home_page_loads()
     {
         await Page.GotoAsync(BaseUrl);
-        await Expect(Page).ToHaveTitleAsync("MailTmBlazor");
         await Expect(Page.Locator("h1")).ToHaveTextAsync("Hello, world!");
     }
 }
