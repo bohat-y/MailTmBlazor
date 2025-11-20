@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DOTNET_NOLOGO: true
-      PLAYWRIGHT_BASE_URL: https://mailtmblazor-abghg7bggth2fkbg.switzerlandnorth-01.azurewebsites.net
+      PLAYWRIGHT_BASE_URL: ${{ secrets.PLAYWRIGHT_BASE_URL }}
     steps:
       - uses: actions/checkout@v4
 

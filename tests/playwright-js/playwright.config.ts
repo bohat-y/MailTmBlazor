@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 import 'dotenv/config';
 
-const baseURL = process.env.PLAYWRIGHT_BASE_URL || 'https://mailtmblazor-abghg7bggth2fkbg.switzerlandnorth-01.azurewebsites.net';
+const baseURL = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:5004';
 
 export default defineConfig({
   testDir: './tests',

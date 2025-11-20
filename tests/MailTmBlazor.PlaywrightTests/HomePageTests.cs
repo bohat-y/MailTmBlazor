@@ -8,7 +8,7 @@ public class HomePageTests : PageTest
 {
     private static string BaseUrl =>
         Environment.GetEnvironmentVariable("PLAYWRIGHT_BASE_URL")
-        ?? "https://mailtmblazor-abghg7bggth2fkbg.switzerlandnorth-01.azurewebsites.net";
+        ?? "http://localhost:5004";
 
     [Test]
     public async Task Home_page_loads()
