@@ -31,11 +31,15 @@ jobs:
       - name: Build
         run: dotnet build MailTmBlazor.sln --configuration Release --no-restore
 
-      - name: Publish Blazor app
-        run: dotnet publish MailTmBlazor/MailTmBlazor.csproj --configuration Release --no-build --output artifacts/frontend
-
       - name: Run unit tests
         run: dotnet test tests/MailTmBlazor.Tests/MailTmBlazor.Tests.csproj --configuration Release --no-build
+
+      - name: Ensure PLAYWRIGHT_BASE_URL is set
+        run: |
+          if [ -z "${PLAYWRIGHT_BASE_URL:-}" ]; then
+            echo "PLAYWRIGHT_BASE_URL is not configured. Set the secret or export it before running Playwright tests."
+            exit 1
+          fi
 
       - name: Install Playwright browsers
         run: pwsh tests/MailTmBlazor.PlaywrightTests/bin/Release/net9.0/playwright.ps1 install --with-deps
