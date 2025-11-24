@@ -69,6 +69,10 @@ jobs:
           npm install
           npx playwright install --with-deps
 
+      - name: Clean Playwright auth state
+        working-directory: tests/playwright-js
+        run: rm -rf .auth
+
       - name: Run Node Playwright tests
         working-directory: tests/playwright-js
         run: npx playwright test
