@@ -7,6 +7,7 @@ export default defineConfig({
   testDir: './tests',
   timeout: 30 * 1000,
   retries: process.env.CI ? 2 : 0,
+  workers: process.env.CI ? 1 : undefined,
   use: {
     baseURL,
     trace: 'on-first-retry'
@@ -18,7 +19,15 @@ export default defineConfig({
     },
     {
       name: 'firefox',
-      use: { ...devices['Desktop Firefox'] }
+      use: {
+        ...devices['Desktop Firefox'],
+        launchOptions: {
+          firefoxUserPrefs: {
+            'dom.events.asyncClipboard.readText': true,
+            'dom.events.testing.asyncClipboard': true
+          }
+        }
+      }
     }
   ]
 });

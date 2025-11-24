@@ -5,7 +5,7 @@ using System.ComponentModel.DataAnnotations;
 public sealed class AuthFormModel
 {
     [Required]
-    [RegularExpression(@"^[A-Za-z0-9_]{3,32}$", ErrorMessage = "Use letters, numbers, or underscore (3–32 chars).")]
+    [RegularExpression(@"^[A-Za-z0-9_-]{3,32}$", ErrorMessage = "Use letters, numbers, dashes, or underscore (3–32 chars).")]
     public string Username { get; set; } = string.Empty;
 
     [Required]
