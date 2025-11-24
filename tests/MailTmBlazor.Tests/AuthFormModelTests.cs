@@ -27,7 +27,7 @@ public class AuthFormModelTests
         else
         {
             var error = Assert.Single(results);
-            Assert.Contains("letters, numbers, or underscore", error.ErrorMessage);
+            Assert.Contains("letters, numbers, dashes, or underscore", error.ErrorMessage);
         }
     }
 
