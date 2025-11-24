@@ -21,8 +21,9 @@ else
   <EditForm EditContext="editContext" OnValidSubmit="RegisterThenLoginAsync">
     <DataAnnotationsValidator />
     <div class="mb-2">
-      <label>Username</label>
-      <input class="form-control"
+      <label for="auth-username">Username</label>
+      <input id="auth-username"
+             class="form-control"
              value="@form.Username"
              @oninput="OnUsernameInput" />
       <ValidationMessage For="() => form.Username" />
@@ -30,8 +31,9 @@ else
     </div>
 
     <div class="mb-2">
-      <label>Password</label>
-      <input class="form-control"
+      <label for="auth-password">Password</label>
+      <input id="auth-password"
+             class="form-control"
              type="password"
              value="@form.Password"
              @oninput="OnPasswordInput" />
@@ -140,7 +142,7 @@ else
       errorMessage = apiEx.StatusCode switch
       {
         HttpStatusCode.UnprocessableEntity => "That alias is invalid or already exists.",
-        HttpStatusCode.TooManyRequests => "Too many requests — please wait a moment and retry.",
+        HttpStatusCode.TooManyRequests => "Too many requests - please wait a moment and retry.",
         HttpStatusCode.BadRequest => "The request was rejected. Double-check your input and try again.",
         HttpStatusCode.Unauthorized => "Invalid email or password.",
         _ => apiEx.Message
