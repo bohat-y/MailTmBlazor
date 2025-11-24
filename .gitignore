@@ -483,6 +483,7 @@ $RECYCLE.BIN/
 tests/playwright-js/node_modules/
 tests/playwright-js/test-results/
 tests/playwright-js/playwright-report/
+tests/playwright-js/.auth/
 
 # Vim temporary swap files
 *.swp
