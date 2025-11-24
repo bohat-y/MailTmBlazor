@@ -14,16 +14,21 @@ builder.RootComponents.Add<App>("#app");
 
 using var configHttpClient = new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) };
 
-await using (var stream = await configHttpClient.GetStreamAsync("appsettings.json"))
+static async Task LoadJsonConfigAsync(HttpClient client, IConfigurationBuilder config, string path)
 {
-    builder.Configuration.AddJsonStream(stream);
+    await using var stream = await client.GetStreamAsync(path);
+    await using var buffer = new MemoryStream();
+    await stream.CopyToAsync(buffer);
+    buffer.Position = 0;
+    config.AddJsonStream(buffer);
 }
+
+await LoadJsonConfigAsync(configHttpClient, builder.Configuration, "appsettings.json");
 
 var envConfigPath = $"appsettings.{builder.HostEnvironment.Environment}.json";
 try
 {
-    await using var envStream = await configHttpClient.GetStreamAsync(envConfigPath);
-    builder.Configuration.AddJsonStream(envStream);
+    await LoadJsonConfigAsync(configHttpClient, builder.Configuration, envConfigPath);
 }
 catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
 {
