@@ -1,0 +1,41 @@
+using System;
+using System.Text.RegularExpressions;
+using Microsoft.Playwright.NUnit;
+using NUnit.Framework;
+
+namespace MailTmBlazor.PlaywrightTests;
+
+[Parallelizable(ParallelScope.Self)]
+public class InformationalTests : PageTest
+{
+    private static string BaseUrl =>
+        Environment.GetEnvironmentVariable("PLAYWRIGHT_BASE_URL")
+        ?? "http://localhost:5004";
+
+    [Test]
+    public async Task Auth_shows_validation_errors_for_invalid_input()
+    {
+        await Page.GotoAsync($"{BaseUrl}/auth");
+        await Page.GetByLabel("Username").FillAsync("xx");
+        await Page.GetByLabel("Password").FillAsync("123");
+        await Page.GetByLabel("Username").PressAsync("Tab");
+
+        await Expect(Page.GetByText("Use letters, numbers, dashes, or underscore")).ToBeVisibleAsync();
+        await Expect(Page.GetByText("Password must be at least 6 characters")).ToBeVisibleAsync();
+    }
+
+    [Test]
+    public async Task Domains_page_lists_available_domains()
+    {
+        await Page.GotoAsync($"{BaseUrl}/domains");
+        var count = await Page.Locator("ul li").CountAsync();
+        Assert.That(count, Is.GreaterThan(0), "Expected at least one domain on the domains page.");
+    }
+
+    [Test]
+    public async Task Inbox_redirects_unauthenticated_users_to_auth()
+    {
+        await Page.GotoAsync($"{BaseUrl}/inbox");
+        await Expect(Page).ToHaveURLAsync(new Regex("/auth$", RegexOptions.IgnoreCase));
+    }
+}
