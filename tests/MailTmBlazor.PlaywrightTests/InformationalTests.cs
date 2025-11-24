@@ -1,5 +1,6 @@
 using System;
 using System.Text.RegularExpressions;
+using Microsoft.Playwright;
 using Microsoft.Playwright.NUnit;
 using NUnit.Framework;
 
@@ -28,8 +29,12 @@ public class InformationalTests : PageTest
     public async Task Domains_page_lists_available_domains()
     {
         await Page.GotoAsync($"{BaseUrl}/domains");
+        // Wait for the loading state to finish so we don't read a transient zero.
+        await Page.GetByText("Loading...").WaitForAsync(new() { State = WaitForSelectorState.Detached });
+        await Page.WaitForSelectorAsync("ul li", new() { Timeout = 15000 });
         var count = await Page.Locator("ul li").CountAsync();
-        Assert.That(count, Is.GreaterThan(0), "Expected at least one domain on the domains page.");
+        var content = await Page.ContentAsync();
+        Assert.That(count, Is.GreaterThan(0), $"Expected at least one domain on the domains page. Page content:\n{content}");
     }
 
     [Test]
