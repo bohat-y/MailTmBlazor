@@ -14,6 +14,7 @@ export default defineConfig({
         baseURL,
         trace: 'on-first-retry',
         screenshot: 'only-on-failure',
+        storageState: './.auth/state.json',
     },
 
     projects: [
