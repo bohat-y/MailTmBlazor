@@ -17,6 +17,8 @@ public sealed class MailTmHttpClient : IAuthService, IMailboxService
     private readonly HttpClient _http;
     private readonly ILogger<MailTmHttpClient> _logger;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+    private string? _sessionToken;
+    private AccountSnapshot? _lastSnapshot;
 
     public MailTmHttpClient(IAccountSession session, HttpClient http, ILogger<MailTmHttpClient> logger)
     {
@@ -53,7 +55,8 @@ public sealed class MailTmHttpClient : IAuthService, IMailboxService
         var tokRes = await _http.PostAsJsonAsync("token", new { address, password }, Json);
         await EnsureSuccessAsync(tokRes);
         var tokenDto = await tokRes.Content.ReadFromJsonAsync<TokenDto>(Json) ?? throw new("Auth failed");
-        _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", tokenDto.Token);
+        _sessionToken = tokenDto.Token;
+        _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _sessionToken);
 
         // 2) me
         var meRes = await _http.GetAsync("me");
@@ -62,14 +65,35 @@ public sealed class MailTmHttpClient : IAuthService, IMailboxService
 
         // 3) persist combined snapshot
         await _session.SetAsync(new AccountSnapshot(
-            tokenDto.Token, me.Id, me.Address, me.Quota, me.Used, me.IsDisabled, me.IsDeleted, me.CreatedAt, me.UpdatedAt
+            _sessionToken, me.Id, me.Address, me.Quota, me.Used, me.IsDisabled, me.IsDeleted, me.CreatedAt, me.UpdatedAt
         ));
+        _lastSnapshot = await _session.GetAsync();
     }
 
     public async Task<Account> LoginAndFetchAsync(string address, string password)
     {
         await LoginAsync(address, password);
         return await MeAsync();
+    }
+
+    public async Task DeleteAccountAsync(string accountId)
+    {
+        await EnsureAuthAsync();
+        var res = await _http.DeleteAsync($"accounts/{accountId}");
+        if (!res.IsSuccessStatusCode)
+        {
+            // try fallback to /me delete
+            var meDelete = await _http.DeleteAsync("me");
+            await EnsureSuccessAsync(meDelete);
+        }
+        else
+        {
+            await EnsureSuccessAsync(res);
+        }
+        await _session.ClearAsync();
+        _sessionToken = null;
+        _lastSnapshot = null;
+        _http.DefaultRequestHeaders.Authorization = null;
     }
 
     public async Task<Account> MeAsync()
@@ -140,11 +164,17 @@ public sealed class MailTmHttpClient : IAuthService, IMailboxService
     {
         if (_http.DefaultRequestHeaders.Authorization is not null) return;
 
-        var snap = await _session.GetAsync();
+        var snap = _lastSnapshot ?? await _session.GetAsync();
         if (snap is not null)
+        {
+            _lastSnapshot = snap;
+            _sessionToken = snap.Token;
             _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", snap.Token);
+        }
         else
+        {
             throw new InvalidOperationException("Not authenticated");
+        }
     }
 
     private async Task EnsureSuccessAsync(HttpResponseMessage response)
