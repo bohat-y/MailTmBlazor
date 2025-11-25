@@ -150,6 +150,7 @@
     private string? modalError;
     private bool modalBusy;
     private List<string> domains = new();
+    private bool navigating;
 
     protected override async Task OnInitializedAsync()
     {
@@ -394,35 +395,14 @@
         {
             await Auth.DeleteAccountAsync(snap.Id);
         }
-        await JS.InvokeVoidAsync("localStorage.removeItem", AliasStorageKey);
-        await JS.InvokeVoidAsync("localStorage.removeItem", PasswordStorageKey);
-        await JS.InvokeVoidAsync("localStorage.removeItem", DomainStorageKey);
-        await JS.InvokeVoidAsync("localStorage.removeItem", "account");
-        await Session.ClearAsync();
-        displayAddress = string.Empty;
-        storedPassword = null;
-        domain = null;
-        userLabel = "Not signed in";
-        showAuthModal = false;
-        actionsOpen = false;
-        drawerOpen = false;
-        StateHasChanged();
-        Nav.NavigateTo("/inbox", forceLoad: true);
+        await ClearClientStateAsync();
+        NavigateSpa("/inbox", hardReload: true);
     }
 
     private async Task Logout()
     {
-        await JS.InvokeVoidAsync("localStorage.removeItem", AliasStorageKey);
-        await JS.InvokeVoidAsync("localStorage.removeItem", PasswordStorageKey);
-        await JS.InvokeVoidAsync("localStorage.removeItem", DomainStorageKey);
-        await JS.InvokeVoidAsync("localStorage.removeItem", "account");
-        await Session.ClearAsync();
-        displayAddress = string.Empty;
-        storedPassword = null;
-        domain = null;
-        userLabel = "Not signed in";
-        showAuthModal = false;
-        Nav.NavigateTo("/inbox", forceLoad: true);
+        await ClearClientStateAsync();
+        NavigateSpa("/inbox", hardReload: true);
     }
 
     private async Task EnsureDomainAsync()
@@ -544,5 +524,30 @@
     {
         Create,
         Login
+    }
+
+    private async Task ClearClientStateAsync()
+    {
+        await JS.InvokeVoidAsync("localStorage.removeItem", AliasStorageKey);
+        await JS.InvokeVoidAsync("localStorage.removeItem", PasswordStorageKey);
+        await JS.InvokeVoidAsync("localStorage.removeItem", DomainStorageKey);
+        await JS.InvokeVoidAsync("localStorage.removeItem", "account");
+        await Session.ClearAsync();
+        displayAddress = string.Empty;
+        storedPassword = null;
+        domain = null;
+        userLabel = "Not signed in";
+        showAuthModal = false;
+        actionsOpen = false;
+        drawerOpen = false;
+        navigating = false;
+    }
+
+    private void NavigateSpa(string uri, bool hardReload = false)
+    {
+        if (navigating) return;
+        navigating = true;
+        Nav.NavigateTo(uri, forceLoad: hardReload);
+        navigating = false;
     }
 }
