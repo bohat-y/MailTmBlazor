@@ -1,43 +1,406 @@
-﻿<div class="top-row ps-3 navbar navbar-dark">
-    <div class="container-fluid">
-        <a class="navbar-brand" href="">MailTmBlazor</a>
-        <button title="Navigation menu" class="navbar-toggler" @onclick="ToggleNavMenu">
-            <span class="navbar-toggler-icon"></span>
-        </button>
-    </div>
-</div>
+﻿@using System.Net
+@using MailTmBlazor.Infrastructure.MailTm
+@inject NavigationManager Nav
+@inject MailTmBlazor.Infrastructure.Auth.IAccountSession Session
+@inject MailTmBlazor.Application.Abstractions.IAuthService Auth
+@inject MailTmBlazor.Application.Abstractions.IMailboxService Mailbox
+@inject IJSRuntime JS
 
-<div class="@NavMenuCssClass nav-scrollable" @onclick="ToggleNavMenu">
-    <nav class="nav flex-column">
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Home
-            </NavLink>
+<header class="topbar @desktopOffsetClass">
+    <div class="topbar-left">
+        <button class="icon-button nav-toggle" title="Open navigation" @onclick="ToggleDrawer">☰</button>
+        <button class="email-pill" title="Copy address" @onclick="CopyEmail">@displayAddress</button>
+        @if (copied)
+        {
+            <span class="pill-feedback">Copied</span>
+        }
+    </div>
+
+    <div class="topbar-actions">
+        <button class="icon-button" title="Theme toggle (coming soon)">
+            <img src="https://www.svgrepo.com/show/310719/dark-theme.svg" alt="" class="icon-img">
+        </button>
+        <button class="icon-button" title="Language (coming soon)">
+            <img src="https://www.svgrepo.com/show/506518/language.svg" alt="" class="icon-img">
+        </button>
+        <div class="avatar" title="@userLabel" @onclick="ToggleActions">@initial</div>
+        @if (actionsOpen)
+        {
+            <div class="actions-menu">
+                <button @onclick="CreateAccount">Create account</button>
+                <button @onclick="Login">Login</button>
+                <button @onclick="DeleteAccount">Delete account</button>
+                <button @onclick="Logout">Logout</button>
+            </div>
+        }
+    </div>
+</header>
+
+<div class="drawer-backdrop @(drawerOpen ? "show" : null)" @onclick="CloseDrawer"></div>
+<nav class="drawer @(drawerOpen ? "open" : null)">
+    <div class="drawer-header">
+        <span class="brand">MailTmBlazor</span>
+        <button class="icon-button mobile-only" @onclick="CloseDrawer">×</button>
+    </div>
+    <NavLink class="drawer-link" href="inbox" Match="NavLinkMatch.All" @onclick="CloseDrawer">
+        <img src="https://www.svgrepo.com/show/533193/mail.svg" alt="" class="icon-img">
+        <span>Inbox</span>
+    </NavLink>
+    <NavLink class="drawer-link" href="auth" @onclick="CloseDrawer">
+        <img src="https://www.svgrepo.com/show/452026/auth-fingerprint.svg" alt="" class="icon-img">
+        <span>Auth</span>
+    </NavLink>
+    <NavLink class="drawer-link" href="domains" @onclick="CloseDrawer">
+        <img src="https://www.svgrepo.com/show/445722/domain.svg" alt="" class="icon-img">
+        <span>Domains</span>
+    </NavLink>
+    <NavLink class="drawer-link" href="me" @onclick="CloseDrawer">
+        <img src="https://www.svgrepo.com/show/512697/profile-1341.svg" alt="" class="icon-img">
+        <span>Account</span>
+    </NavLink>
+    <div class="drawer-footer">
+        <div class="divider"></div>
+        <div class="quota-row">
+            <span class="muted">Usage</span>
+            <div class="progress-bar">
+                <div class="progress-fill" style="width: @quotaPercent%;"></div>
+            </div>
+            <span class="muted">@usedMb / @quotaMb MB</span>
         </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="auth">Auth</NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="me">Me</NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="domains">Domains</NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="inbox">Inbox</NavLink>
-        </div>
-        
-    </nav>
-</div>
+        <a class="muted" href="https://docs.mail.tm" target="_blank" rel="noreferrer">API docs</a>
+    </div>
+</nav>
 
 @code {
-    private bool collapseNavMenu = true;
+    private readonly string[] WordBank =
+    [
+        "bright", "swift", "shadow", "lumen", "ember", "north", "delta", "spruce", "amber", "vivid",
+        "glow", "pixel", "prime", "dash", "orbit", "fable", "cobalt", "zenith", "river", "cedar"
+    ];
 
-    private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
+    private const string AliasStorageKey = "anonEmail";
+    private const string PasswordStorageKey = "anonPassword";
+    private const string DomainStorageKey = "anonDomain";
+    private static string? CachedDomain;
+    private static Task<string?>? DomainFetchTask;
+    private string displayAddress = string.Empty;
+    private string initial = "?";
+    private string userLabel = "Guest";
+    private bool drawerOpen;
+    private bool actionsOpen;
+    private bool copied;
+    private string desktopOffsetClass = string.Empty;
+    private string? storedPassword;
+    private string? domain;
+    private bool ensuringAccount;
+    private bool retriedDomain;
+    private bool retriedLogin;
+    private double quotaPercent;
+    private string usedMb = "0";
+    private string quotaMb = "0";
 
-    private void ToggleNavMenu()
+    protected override async Task OnInitializedAsync()
     {
-        collapseNavMenu = !collapseNavMenu;
+        await EnsureDomainAsync();
+
+        var session = await Session.GetAsync();
+        if (session?.Address is not null)
+        {
+            displayAddress = session.Address;
+            userLabel = $"Signed in as {session.Address}";
+            domain ??= displayAddress.Split('@').LastOrDefault();
+            SetUsage(session.Used, session.Quota);
+            desktopOffsetClass = "desktop-offset";
+            return;
+        }
+
+        var stored = await JS.InvokeAsync<string?>("localStorage.getItem", AliasStorageKey);
+        storedPassword = await JS.InvokeAsync<string?>("localStorage.getItem", PasswordStorageKey);
+        var storedDomain = await JS.InvokeAsync<string?>("localStorage.getItem", DomainStorageKey);
+        if (!string.IsNullOrWhiteSpace(storedDomain)) domain ??= storedDomain;
+
+        if (!string.IsNullOrWhiteSpace(stored))
+        {
+            displayAddress = stored!;
+            domain ??= displayAddress.Split('@').LastOrDefault();
+        }
+        if (string.IsNullOrWhiteSpace(displayAddress) && !string.IsNullOrWhiteSpace(domain))
+        {
+            displayAddress = GenerateAlias();
+            storedPassword = GeneratePassword();
+            await PersistAnonCredentials(displayAddress, storedPassword, domain);
+        }
+        else if (!string.IsNullOrWhiteSpace(displayAddress) && !string.IsNullOrWhiteSpace(domain))
+        {
+            // If stored alias domain no longer matches available domain, regenerate to avoid 422.
+            var aliasDomain = displayAddress.Split('@').LastOrDefault();
+            if (!string.Equals(aliasDomain, domain, StringComparison.OrdinalIgnoreCase))
+            {
+                displayAddress = GenerateAlias();
+                storedPassword = GeneratePassword();
+                await PersistAnonCredentials(displayAddress, storedPassword, domain);
+            }
+        }
+        await EnsureAccountAsync();
+
+        initial = char.ToUpperInvariant(displayAddress.FirstOrDefault('u')).ToString();
+        userLabel = session?.Address is not null ? $"Signed in as {session.Address}" : "Not signed in";
+
+        // apply desktop offset class; JS-free check via window width would need JSInterop, so keep class always and hide with CSS when mobile
+        desktopOffsetClass = "desktop-offset";
     }
 
+    private string GenerateAlias()
+    {
+        if (string.IsNullOrWhiteSpace(domain)) throw new InvalidOperationException("No domain available.");
+        var rnd = Random.Shared;
+        var first = WordBank[rnd.Next(WordBank.Length)];
+        var second = WordBank[rnd.Next(WordBank.Length)];
+        return $"{first}-{second}@{domain}";
+    }
+
+    private static string GeneratePassword() => $"P@{Guid.NewGuid():N}".Substring(0, 16);
+
+    private async Task PersistAnonCredentials(string alias, string? password, string? dom)
+    {
+        await JS.InvokeVoidAsync("localStorage.setItem", AliasStorageKey, alias);
+        if (!string.IsNullOrWhiteSpace(password))
+        {
+            await JS.InvokeVoidAsync("localStorage.setItem", PasswordStorageKey, password);
+        }
+        if (!string.IsNullOrWhiteSpace(dom))
+        {
+            await JS.InvokeVoidAsync("localStorage.setItem", DomainStorageKey, dom);
+        }
+    }
+
+    private async Task EnsureAccountAsync()
+    {
+        if (ensuringAccount) return;
+        ensuringAccount = true;
+        retriedDomain = false;
+        retriedLogin = false;
+        if (string.IsNullOrWhiteSpace(domain) || string.IsNullOrWhiteSpace(displayAddress) || !displayAddress.Contains('@'))
+        {
+            userLabel = "Unable to fetch domains";
+            ensuringAccount = false;
+            return;
+        }
+        try
+        {
+            var pwd = storedPassword ?? GeneratePassword();
+            storedPassword = pwd;
+            await PersistAnonCredentials(displayAddress, pwd, domain);
+
+            var registerFailed = false;
+            try
+            {
+                await Auth.RegisterAsync(displayAddress, pwd);
+            }
+            catch (MailTmApiException ex) when (ex.StatusCode == HttpStatusCode.UnprocessableEntity)
+            {
+                // Domain invalid → handled below, conflict → continue to login
+                if (IsDomainInvalid(ex.Message) && !retriedDomain)
+                {
+                    retriedDomain = true;
+                    await JS.InvokeVoidAsync("localStorage.removeItem", DomainStorageKey);
+                    CachedDomain = null;
+                    domain = null;
+                    await EnsureDomainAsync();
+                    if (string.IsNullOrWhiteSpace(domain))
+                    {
+                        userLabel = "Unable to fetch domains";
+                        ensuringAccount = false;
+                        return;
+                    }
+                    displayAddress = GenerateAlias();
+                    storedPassword = GeneratePassword();
+                    await PersistAnonCredentials(displayAddress, storedPassword, domain);
+                    ensuringAccount = false;
+                    await EnsureAccountAsync();
+                    return;
+                }
+                registerFailed = true; // conflict/rate limit; try login anyway
+            }
+
+            try
+            {
+                var account = await Auth.LoginAndFetchAsync(displayAddress, pwd);
+                userLabel = $"Signed in as {displayAddress}";
+                SetUsage(account.Used, account.Quota);
+                StateHasChanged();
+            }
+            catch (MailTmApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized && !retriedLogin)
+            {
+                // Password mismatch for an existing alias → generate fresh creds and retry once.
+                retriedLogin = true;
+                await JS.InvokeVoidAsync("localStorage.removeItem", AliasStorageKey);
+                await JS.InvokeVoidAsync("localStorage.removeItem", PasswordStorageKey);
+                displayAddress = GenerateAlias();
+                storedPassword = GeneratePassword();
+                await PersistAnonCredentials(displayAddress, storedPassword, domain);
+                ensuringAccount = false;
+                await EnsureAccountAsync();
+                return;
+            }
+            catch
+            {
+                if (!registerFailed)
+                {
+                    userLabel = "Unable to register/login";
+                }
+                else
+                {
+                    userLabel = "Registered/exists; login failed";
+                }
+            }
+        }
+        catch (MailTmApiException ex) when (ex.StatusCode == HttpStatusCode.UnprocessableEntity && !retriedDomain)
+        {
+            // domain invalid → refresh domain list and retry once
+            retriedDomain = true;
+            await JS.InvokeVoidAsync("localStorage.removeItem", DomainStorageKey);
+            CachedDomain = null;
+            domain = null;
+            await EnsureDomainAsync();
+            if (string.IsNullOrWhiteSpace(domain))
+            {
+                userLabel = "Unable to fetch domains";
+            }
+            else
+            {
+                displayAddress = GenerateAlias();
+                storedPassword = GeneratePassword();
+                await PersistAnonCredentials(displayAddress, storedPassword, domain);
+                ensuringAccount = false;
+                await EnsureAccountAsync();
+                return;
+            }
+        }
+        catch
+        {
+            userLabel = "Unable to register/login";
+        }
+        finally
+        {
+            ensuringAccount = false;
+        }
+    }
+
+    private static bool IsDomainInvalid(string? message)
+    {
+        if (string.IsNullOrWhiteSpace(message)) return false;
+        return message.Contains("domain", StringComparison.OrdinalIgnoreCase)
+               || message.Contains("not valid", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void SetUsage(long used, long quota)
+    {
+        usedMb = Math.Round(used / 1_000_000d, 2).ToString("0.##");
+        quotaMb = Math.Round(quota / 1_000_000d, 2).ToString("0.##");
+        quotaPercent = quota > 0 ? Math.Clamp(used * 100d / quota, 0, 100) : 0;
+    }
+
+    private void ToggleDrawer() => drawerOpen = !drawerOpen;
+    private void CloseDrawer() => drawerOpen = false;
+
+    private void ToggleActions() => actionsOpen = !actionsOpen;
+
+    private async Task CopyEmail()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", displayAddress);
+            copied = true;
+            _ = Task.Delay(1200).ContinueWith(_ =>
+            {
+                copied = false;
+                InvokeAsync(StateHasChanged);
+            });
+        }
+        catch
+        {
+            copied = false;
+        }
+    }
+
+    private async Task CreateAccount()
+    {
+        displayAddress = GenerateAlias();
+        storedPassword = GeneratePassword();
+        await PersistAnonCredentials(displayAddress, storedPassword, domain);
+        await EnsureAccountAsync();
+    }
+
+    private async Task Login() => await EnsureAccountAsync();
+
+    private async Task DeleteAccount()
+    {
+        await JS.InvokeVoidAsync("localStorage.removeItem", AliasStorageKey);
+        await JS.InvokeVoidAsync("localStorage.removeItem", PasswordStorageKey);
+        await JS.InvokeVoidAsync("localStorage.removeItem", DomainStorageKey);
+        await Session.ClearAsync();
+        displayAddress = GenerateAlias();
+        storedPassword = GeneratePassword();
+        await PersistAnonCredentials(displayAddress, storedPassword, domain);
+        userLabel = "Not signed in";
+        await EnsureAccountAsync();
+    }
+
+    private async Task Logout()
+    {
+        await Session.ClearAsync();
+        Nav.NavigateTo("/auth", forceLoad: true);
+    }
+
+    private async Task EnsureDomainAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(domain)) return;
+
+        var stored = await JS.InvokeAsync<string?>("localStorage.getItem", DomainStorageKey);
+        if (!string.IsNullOrWhiteSpace(stored))
+        {
+            domain = stored;
+            CachedDomain = domain;
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(CachedDomain))
+        {
+            domain = CachedDomain;
+            return;
+        }
+
+        domain = await GetDomainOnceAsync();
+
+        if (!string.IsNullOrWhiteSpace(domain))
+        {
+            CachedDomain = domain;
+            await JS.InvokeVoidAsync("localStorage.setItem", DomainStorageKey, domain);
+        }
+    }
+
+    private async Task<string?> GetDomainOnceAsync()
+    {
+        if (DomainFetchTask is null)
+        {
+            DomainFetchTask = FetchDomainAsync();
+        }
+
+        try { return await DomainFetchTask; }
+        finally { DomainFetchTask = null; }
+    }
+
+    private async Task<string?> FetchDomainAsync()
+    {
+        try
+        {
+            var domains = await Mailbox.GetDomainsAsync();
+            return domains.FirstOrDefault()?.Domain;
+        }
+        catch
+        {
+            return null;
+        }
+    }
 }

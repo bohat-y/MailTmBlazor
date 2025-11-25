@@ -4,25 +4,15 @@
 @inject MailTmBlazor.Infrastructure.Realtime.InboxRealtimeClient Realtime
 @inject NavigationManager Nav
 @inject MailTmBlazor.Infrastructure.MailTm.MailTmEndpoints Endpoints
+@inject MailTmBlazor.Application.Abstractions.IAuthService Auth
+@inject IJSRuntime JS
 @implements IAsyncDisposable
-
-<h3>Inbox</h3>
-
-<div class="small text-muted mb-2">
-  <strong>Mercure:</strong> @status
-  @if (lastEventAt is not null) { <span> • Last event: @lastEventAt?.ToLocalTime()</span> }
-</div>
 
 @if (loading) { <p>Loading…</p> }
 else if (!string.IsNullOrEmpty(error)) { <p class="text-danger">@error</p> }
 else
 {
-  <div class="mb-2">
-    <button class="btn btn-sm btn-secondary me-2" @onclick="Refresh">Refresh</button>
-    <button class="btn btn-sm btn-outline-primary" @onclick="TriggerEvent" disabled="@(!items.Any())">Trigger event (toggle seen)</button>
-  </div>
-
-  @if (!items.Any()) { <p>No messages.</p> }
+  @if (!items.Any()) { <p class="text-muted small">No messages.</p> }
   else
   {
     <ul class="list-group">
@@ -44,6 +34,14 @@ else
       }
     </ul>
   }
+
+  <div class="inbox-footer">
+    <div class="footer-actions">
+        <button class="btn btn-sm btn-secondary me-2" @onclick="Refresh">Refresh</button>
+        <button class="btn btn-sm btn-outline-primary" @onclick="TriggerEvent" disabled="@(!items.Any())">Trigger event</button>
+    </div>
+    <span class="muted small">Mercure: @status @if (lastEventAt is not null) { <span>• Last event: @lastEventAt?.ToLocalTime()</span> }</span>
+  </div>
 }
 
 @code {
@@ -52,11 +50,14 @@ else
   private DateTimeOffset? lastEventAt;
   private bool loading = true;
   private string? error;
-
   protected override async Task OnInitializedAsync()
   {
-    var snap = await Session.GetAsync();
-    if (snap is null) { Nav.NavigateTo("/auth", true); return; }
+    var snap = await Session.GetAsync() ?? await WaitForSessionAsync();
+    if (snap is null)
+    {
+      Nav.NavigateTo("/auth", true);
+      return;
+    }
 
     await LoadInbox(showSpinner: true);
 
@@ -128,4 +129,15 @@ else
   }
 
   public async ValueTask DisposeAsync() => await Realtime.DisposeAsync();
+
+  private async Task<MailTmBlazor.Infrastructure.Auth.AccountSnapshot?> WaitForSessionAsync()
+  {
+    for (var i = 0; i < 15; i++)
+    {
+      var snap = await Session.GetAsync();
+      if (snap is not null) return snap;
+      await Task.Delay(200);
+    }
+    return null;
+  }
 }

@@ -44,7 +44,7 @@ else
       <label>Domain</label>
       @if (domains?.Count == 1)
       {
-        <div class="form-control-plaintext">@domains[0].Domain</div>
+        <small class="form-control-plaintext text-muted">@domains[0].Domain</small>
         <input type="hidden" value="@domains[0].Domain" />
       }
       else
