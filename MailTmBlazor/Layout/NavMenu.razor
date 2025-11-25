@@ -1,4 +1,5 @@
 ﻿@using System.Net
+@using MailTmBlazor.Infrastructure.Auth
 @using MailTmBlazor.Infrastructure.MailTm
 @inject NavigationManager Nav
 @inject MailTmBlazor.Infrastructure.Auth.IAccountSession Session
@@ -71,6 +72,49 @@
     </div>
 </nav>
 
+@if (showAuthModal)
+{
+    <div class="modal-backdrop" @onclick="CloseModal">
+        <div class="modal-shell" @onclick:stopPropagation="true">
+            <div class="modal-icon">
+                <img src="https://www.svgrepo.com/show/380127/user-add-account-profile.svg" alt="" class="icon-img">
+            </div>
+            <h4>@(authMode == AuthMode.Create ? "Create an account" : "Sign in")</h4>
+            <p class="muted small">Pick a name, domain, and password. A strong password is prefilled.</p>
+
+            <div class="modal-field">
+                <label>Email</label>
+                <div class="modal-email-row">
+                    <input class="form-control" value="@modalUsername" @oninput="e => modalUsername = e.Value?.ToString() ?? string.Empty" />
+                    <select class="form-select modal-domain" value="@modalDomain" @onchange="e => modalDomain = e.Value?.ToString() ?? modalDomain">
+                        @foreach (var d in domains)
+                        {
+                            <option value="@d" selected="@(modalDomain == d)">@d</option>
+                        }
+                    </select>
+                </div>
+            </div>
+
+            <div class="modal-field">
+                <label>Password</label>
+                <input class="form-control" type="password" value="@modalPassword" @oninput="e => modalPassword = e.Value?.ToString() ?? string.Empty" />
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(modalError))
+            {
+                <p class="text-danger small">@modalError</p>
+            }
+
+            <div class="modal-actions">
+                <button class="btn btn-outline-secondary" @onclick="CloseModal">Cancel</button>
+                <button class="btn btn-primary" @onclick="SubmitModal" disabled="@modalBusy">
+                    @(modalBusy ? "Working…" : (authMode == AuthMode.Create ? "Create" : "Login"))
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private readonly string[] WordBank =
     [
@@ -98,6 +142,14 @@
     private double quotaPercent;
     private string usedMb = "0";
     private string quotaMb = "0";
+    private bool showAuthModal;
+    private AuthMode authMode = AuthMode.Create;
+    private string modalUsername = string.Empty;
+    private string modalPassword = string.Empty;
+    private string modalDomain = string.Empty;
+    private string? modalError;
+    private bool modalBusy;
+    private List<string> domains = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -118,6 +170,7 @@
         storedPassword = await JS.InvokeAsync<string?>("localStorage.getItem", PasswordStorageKey);
         var storedDomain = await JS.InvokeAsync<string?>("localStorage.getItem", DomainStorageKey);
         if (!string.IsNullOrWhiteSpace(storedDomain)) domain ??= storedDomain;
+        if (!string.IsNullOrWhiteSpace(storedDomain) && !domains.Contains(storedDomain)) domains.Add(storedDomain);
 
         if (!string.IsNullOrWhiteSpace(stored))
         {
@@ -326,31 +379,50 @@
 
     private async Task CreateAccount()
     {
-        displayAddress = GenerateAlias();
-        storedPassword = GeneratePassword();
-        await PersistAnonCredentials(displayAddress, storedPassword, domain);
-        await EnsureAccountAsync();
+        await ShowAuthModal(AuthMode.Create);
     }
 
-    private async Task Login() => await EnsureAccountAsync();
+    private async Task Login()
+    {
+        await ShowAuthModal(AuthMode.Login);
+    }
 
     private async Task DeleteAccount()
     {
+        var snap = await Session.GetAsync();
+        if (snap is not null)
+        {
+            await Auth.DeleteAccountAsync(snap.Id);
+        }
         await JS.InvokeVoidAsync("localStorage.removeItem", AliasStorageKey);
         await JS.InvokeVoidAsync("localStorage.removeItem", PasswordStorageKey);
         await JS.InvokeVoidAsync("localStorage.removeItem", DomainStorageKey);
+        await JS.InvokeVoidAsync("localStorage.removeItem", "account");
         await Session.ClearAsync();
-        displayAddress = GenerateAlias();
-        storedPassword = GeneratePassword();
-        await PersistAnonCredentials(displayAddress, storedPassword, domain);
+        displayAddress = string.Empty;
+        storedPassword = null;
+        domain = null;
         userLabel = "Not signed in";
-        await EnsureAccountAsync();
+        showAuthModal = false;
+        actionsOpen = false;
+        drawerOpen = false;
+        StateHasChanged();
+        Nav.NavigateTo("/inbox", forceLoad: true);
     }
 
     private async Task Logout()
     {
+        await JS.InvokeVoidAsync("localStorage.removeItem", AliasStorageKey);
+        await JS.InvokeVoidAsync("localStorage.removeItem", PasswordStorageKey);
+        await JS.InvokeVoidAsync("localStorage.removeItem", DomainStorageKey);
+        await JS.InvokeVoidAsync("localStorage.removeItem", "account");
         await Session.ClearAsync();
-        Nav.NavigateTo("/auth", forceLoad: true);
+        displayAddress = string.Empty;
+        storedPassword = null;
+        domain = null;
+        userLabel = "Not signed in";
+        showAuthModal = false;
+        Nav.NavigateTo("/inbox", forceLoad: true);
     }
 
     private async Task EnsureDomainAsync()
@@ -377,6 +449,7 @@
         {
             CachedDomain = domain;
             await JS.InvokeVoidAsync("localStorage.setItem", DomainStorageKey, domain);
+            if (!domains.Contains(domain)) domains.Add(domain);
         }
     }
 
@@ -395,12 +468,81 @@
     {
         try
         {
-            var domains = await Mailbox.GetDomainsAsync();
-            return domains.FirstOrDefault()?.Domain;
+            var list = await Mailbox.GetDomainsAsync();
+            domains = list.Select(d => d.Domain).ToList();
+            return domains.FirstOrDefault();
         }
         catch
         {
             return null;
         }
+    }
+
+    private async Task ShowAuthModal(AuthMode mode)
+    {
+        authMode = mode;
+        await EnsureDomainAsync();
+        modalDomain = domain ?? domains.FirstOrDefault() ?? string.Empty;
+        modalUsername = (displayAddress.Contains('@') ? displayAddress.Split('@')[0] : GenerateAlias().Split('@')[0]);
+        modalPassword = storedPassword ?? GeneratePassword();
+        modalError = null;
+        showAuthModal = true;
+    }
+
+    private void CloseModal()
+    {
+        showAuthModal = false;
+        modalBusy = false;
+        modalError = null;
+    }
+
+    private async Task SubmitModal()
+    {
+        if (string.IsNullOrWhiteSpace(modalUsername) || string.IsNullOrWhiteSpace(modalDomain) || string.IsNullOrWhiteSpace(modalPassword))
+        {
+            modalError = "All fields are required.";
+            return;
+        }
+
+        modalBusy = true;
+        modalError = null;
+        var address = $"{modalUsername}@{modalDomain}";
+
+        try
+        {
+            if (authMode == AuthMode.Create)
+            {
+                try { await Auth.RegisterAsync(address, modalPassword); } catch { /* ignore conflicts */ }
+            }
+
+            var account = await Auth.LoginAndFetchAsync(address, modalPassword);
+            displayAddress = account.Address;
+            storedPassword = modalPassword;
+            domain = modalDomain;
+            await PersistAnonCredentials(displayAddress, storedPassword, domain);
+            SetUsage(account.Used, account.Quota);
+            userLabel = $"Signed in as {account.Address}";
+            showAuthModal = false;
+            actionsOpen = false;
+            drawerOpen = false;
+            StateHasChanged();
+            Nav.NavigateTo("/inbox", forceLoad: true);
+            return;
+        }
+        catch (Exception ex)
+        {
+            modalError = ex.Message;
+        }
+        finally
+        {
+            modalBusy = false;
+            StateHasChanged();
+        }
+    }
+
+    private enum AuthMode
+    {
+        Create,
+        Login
     }
 }

@@ -65,18 +65,31 @@ else
 
     var realtimeBase = Endpoints.ProxyBaseUrl;
 
-    await Realtime.StartAsync(
-      realtimeBase,
-      snap.Id,
-      snap.Token,
-      async () =>
-      {
-        status = "connected";
-        lastEventAt = DateTimeOffset.Now;
-        await LoadInbox();
-        await InvokeAsync(StateHasChanged);
-      });
-    status = "connected";
+    try
+    {
+      await Realtime.StartAsync(
+        realtimeBase,
+        snap.Id,
+        snap.Token,
+        async () =>
+        {
+          status = "connected";
+          lastEventAt = DateTimeOffset.Now;
+          await LoadInbox();
+          await InvokeAsync(StateHasChanged);
+        });
+      status = "connected";
+    }
+    catch (HttpRequestException ex)
+    {
+      status = "rate-limited";
+      error = $"Realtime unavailable: {ex.Message}";
+    }
+    catch (Exception ex)
+    {
+      status = "error";
+      error = $"Realtime failed: {ex.Message}";
+    }
   }
 
   private async Task LoadInbox(bool showSpinner = false)
