@@ -66,6 +66,12 @@ public sealed class MailTmHttpClient : IAuthService, IMailboxService
         ));
     }
 
+    public async Task<Account> LoginAndFetchAsync(string address, string password)
+    {
+        await LoginAsync(address, password);
+        return await MeAsync();
+    }
+
     public async Task<Account> MeAsync()
     {
         await EnsureAuthAsync();
