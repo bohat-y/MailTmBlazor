@@ -15,20 +15,21 @@ else
   @if (!items.Any()) { <p class="text-muted small">No messages.</p> }
   else
   {
-    <ul class="list-group">
+    <ul class="list-group message-list">
       @foreach (var m in items)
       {
-        <li class="list-group-item d-flex justify-content-between">
-          <div>
-            @if (!m.Seen) { <span class="badge bg-primary me-2">unread</span> }
-            <strong>@m.Subject</strong>
-            <div class="text-muted small">
-              @m.FromAddress • @m.CreatedAt.ToLocalTime()
+        <li class="list-group-item message-row" @onclick="() => OpenMessage(m.Id)">
+          <div class="msg-left">
+            <div class="avatar-circle">@GetInitial(m.FromAddress)</div>
+            <div class="msg-meta">
+              <div class="msg-from text-muted">@m.FromAddress</div>
+              <div class="msg-subject">@m.Subject</div>
+              <div class="msg-intro text-muted small">@m.Intro</div>
             </div>
           </div>
-          <div class="btn-group btn-group-sm">
-            @if (!m.Seen) { <button class="btn btn-outline-success" @onclick="() => MarkRead(m.Id)">Mark read</button> }
-            <button class="btn btn-outline-danger" @onclick="() => DeleteMessage(m.Id)">Delete</button>
+          <div class="msg-right">
+            <div class="msg-date text-muted small">@m.CreatedAt.ToLocalTime().ToString("g")</div>
+            @if (!m.Seen) { <span class="badge bg-primary">new</span> }
           </div>
         </li>
       }
@@ -44,12 +45,68 @@ else
   </div>
 }
 
+@if (showMessageModal)
+{
+    <div class="modal-backdrop" @onclick="CloseMessageModal">
+        <div class="modal-shell message-modal" @onclick:stopPropagation="true">
+            @if (messageLoading)
+            {
+                <p class="muted">Loading message…</p>
+            }
+            else if (!string.IsNullOrEmpty(messageError))
+            {
+                <p class="text-danger small">@messageError</p>
+            }
+            else if (selectedMessage is not null)
+            {
+                <div class="msg-header">
+                    <h4>@selectedMessage.Subject</h4>
+                    <div class="text-muted small">From @selectedMessage.FromAddress · @selectedMessage.CreatedAt.ToLocalTime().ToString("f")</div>
+                </div>
+                <div class="msg-body">
+                    @if (showRawFrame && !string.IsNullOrWhiteSpace(rawHtmlContent))
+                    {
+                        <iframe class="msg-iframe"
+                                sandbox="allow-same-origin"
+                                srcdoc="@rawHtmlContent">
+                        </iframe>
+                    }
+                    else if (!string.IsNullOrWhiteSpace(selectedMessage.Text))
+                    {
+                        <pre class="msg-text">@selectedMessage.Text</pre>
+                    }
+                    else if (selectedMessage.Html is not null && selectedMessage.Html.Any())
+                    {
+                        <div class="msg-html" @onclick:stopPropagation="true">
+                            @((MarkupString)SanitizeHtml(selectedMessage.Html.First()))
+                        </div>
+                        <button class="btn btn-sm btn-outline-secondary mt-2" @onclick="OpenRawHtml">Open raw HTML (sandboxed)</button>
+                    }
+                    else
+                    {
+                        <p class="muted">No content available.</p>
+                    }
+                </div>
+            }
+            <div class="modal-actions">
+                <button class="btn btn-outline-secondary" @onclick="CloseMessageModal">Close</button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
   private List<MailTmBlazor.Domain.Entities.Message> items = new();
   private string status = "disconnected";
   private DateTimeOffset? lastEventAt;
   private bool loading = true;
   private string? error;
+  private bool showMessageModal;
+  private bool messageLoading;
+  private string? messageError;
+  private MailTmBlazor.Domain.Entities.Message? selectedMessage;
+  private string? rawHtmlContent;
+  private bool showRawFrame;
   protected override async Task OnInitializedAsync()
   {
     var snap = await Session.GetAsync() ?? await WaitForSessionAsync();
@@ -143,6 +200,44 @@ else
 
   public async ValueTask DisposeAsync() => await Realtime.DisposeAsync();
 
+  private async Task OpenMessage(string id)
+  {
+    showMessageModal = true;
+    messageLoading = true;
+    messageError = null;
+    selectedMessage = null;
+    try
+    {
+      selectedMessage = await Mail.GetMessageAsync(id);
+    }
+    catch (Exception ex)
+    {
+      messageError = ex.Message;
+    }
+    finally
+    {
+      messageLoading = false;
+      await InvokeAsync(StateHasChanged);
+    }
+  }
+
+  private void CloseMessageModal()
+  {
+    showMessageModal = false;
+    messageLoading = false;
+    messageError = null;
+    selectedMessage = null;
+    rawHtmlContent = null;
+    showRawFrame = false;
+  }
+
+  private static string GetInitial(string fromAddress)
+  {
+    if (string.IsNullOrWhiteSpace(fromAddress)) return "?";
+    var first = fromAddress.Trim()[0];
+    return char.ToUpperInvariant(first).ToString();
+  }
+
   private async Task<MailTmBlazor.Infrastructure.Auth.AccountSnapshot?> WaitForSessionAsync()
   {
     for (var i = 0; i < 15; i++)
@@ -152,5 +247,32 @@ else
       await Task.Delay(200);
     }
     return null;
+  }
+
+  private string SanitizeHtml(string html)
+  {
+    // Lightweight scrub: strip script/style/iframe/object/embed/form and inline event handlers.
+    string StripTag(string input, string tag) =>
+      System.Text.RegularExpressions.Regex.Replace(input, $"<\\s*{tag}[^>]*?>[\\s\\S]*?<\\/{tag}\\s*>", string.Empty, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    var safe = html;
+    foreach (var tag in new[] { "script", "style", "iframe", "object", "embed", "form" })
+    {
+      safe = StripTag(safe, tag);
+    }
+
+    // Strip on* event handlers
+    safe = System.Text.RegularExpressions.Regex.Replace(safe, "on\\w+\\s*=\\s*\"[^\"]*\"", string.Empty, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    safe = System.Text.RegularExpressions.Regex.Replace(safe, "on\\w+\\s*=\\s*'[^']*'", string.Empty, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    safe = System.Text.RegularExpressions.Regex.Replace(safe, "on\\w+\\s*=\\s*[^\\s>]+", string.Empty, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    return $"<div class=\"msg-html-safe\">{safe}</div>";
+  }
+
+  private void OpenRawHtml()
+  {
+    if (selectedMessage?.Html is null || !selectedMessage.Html.Any()) return;
+    rawHtmlContent = selectedMessage.Html.First();
+    showRawFrame = true;
   }
 }

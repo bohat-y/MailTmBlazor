@@ -106,7 +106,7 @@
             }
 
             <div class="modal-actions">
-                <button class="btn btn-outline-secondary" @onclick="CloseModal">Cancel</button>
+                <button class="btn btn-outline-secondary" @onclick="CloseModal" disabled="@modalBusy">Cancel</button>
                 <button class="btn btn-primary" @onclick="SubmitModal" disabled="@modalBusy">
                     @(modalBusy ? "Working…" : (authMode == AuthMode.Create ? "Create" : "Login"))
                 </button>
@@ -170,8 +170,11 @@
         var stored = await JS.InvokeAsync<string?>("localStorage.getItem", AliasStorageKey);
         storedPassword = await JS.InvokeAsync<string?>("localStorage.getItem", PasswordStorageKey);
         var storedDomain = await JS.InvokeAsync<string?>("localStorage.getItem", DomainStorageKey);
-        if (!string.IsNullOrWhiteSpace(storedDomain)) domain ??= storedDomain;
-        if (!string.IsNullOrWhiteSpace(storedDomain) && !domains.Contains(storedDomain)) domains.Add(storedDomain);
+        if (!string.IsNullOrWhiteSpace(storedDomain))
+        {
+            domain ??= storedDomain;
+            if (!domains.Contains(storedDomain)) domains.Add(storedDomain);
+        }
 
         if (!string.IsNullOrWhiteSpace(stored))
         {
@@ -462,6 +465,7 @@
     {
         authMode = mode;
         await EnsureDomainAsync();
+        if (!string.IsNullOrWhiteSpace(domain) && !domains.Contains(domain)) domains.Add(domain);
         modalDomain = domain ?? domains.FirstOrDefault() ?? string.Empty;
         modalUsername = (displayAddress.Contains('@') ? displayAddress.Split('@')[0] : GenerateAlias().Split('@')[0]);
         modalPassword = storedPassword ?? GeneratePassword();
