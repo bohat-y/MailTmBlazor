@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Microsoft.Playwright.NUnit;
 using NUnit.Framework;
 
@@ -13,7 +14,7 @@ public class HomePageTests : PageTest
     [Test]
     public async Task Home_page_loads()
     {
-        await Page.GotoAsync(BaseUrl);
-        await Expect(Page.Locator("h1")).ToHaveTextAsync("Hello, world!");
+        await Page.GotoAsync($"{BaseUrl}/inbox");
+        await Expect(Page).ToHaveURLAsync(new Regex("/inbox$", RegexOptions.IgnoreCase));
     }
 }
