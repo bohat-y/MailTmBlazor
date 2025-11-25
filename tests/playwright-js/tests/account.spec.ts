@@ -12,7 +12,7 @@ test.describe.serial('account setup', { tag: '@account-once' }, () => {
         sharedUsername = meta.alias;
 
         await page.goto('/me');
-        await expect(page.getByText(`${sharedUsername}@`)).toBeVisible();
+        await expect(page.getByText(`${sharedUsername}@`, { exact: false })).toBeVisible();
         await page.getByRole('button', { name: /Logout/i }).click();
     });
 
