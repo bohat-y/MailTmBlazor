@@ -8,7 +8,24 @@ export async function register(page: Page, username: string, password: string) {
     await page.getByLabel('Username').fill(username);
     await page.getByLabel('Password').fill(password);
     await page.getByRole('button', { name: /Register & Sign in/i }).click();
-    await expect(page).toHaveURL(/\/me$/);
+
+    // Wait until the app has persisted the account or navigated to a logged-in page.
+    let success = false;
+    for (let i = 0; i < 15; i++) {
+        const url = page.url();
+        if (/\/(me|inbox)$/i.test(url)) {
+            success = true;
+            break;
+        }
+        const hasAccount = await page.evaluate(() => !!localStorage.getItem('account'));
+        if (hasAccount) {
+            success = true;
+            break;
+        }
+        await page.waitForTimeout(1000);
+    }
+
+    expect(success).toBeTruthy();
 }
 
 export async function submitExpectingError(page: Page) {

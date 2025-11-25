@@ -4,7 +4,7 @@ import { test, expect } from '@playwright/test';
 
 const authDir = path.join(__dirname, '..', '.auth');
 const authStateFile = path.join(authDir, 'state.json');
-const authMetaFile = path.join(authDir, 'user-meta.json');
+const authMetaFile = path.join(authDir, 'user.json');
 const { alias } = JSON.parse(fs.readFileSync(authMetaFile, 'utf-8'));
 
 test.use({ storageState: authStateFile });
