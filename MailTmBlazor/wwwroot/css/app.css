@@ -255,6 +255,33 @@ a:hover { text-decoration: underline; }
     display: inline-block;
 }
 
+.list-group {
+    border: none;
+    border-radius: 12px;
+    background: transparent;
+    gap: 0.5rem;
+    padding: 0;
+}
+
+.list-group-item {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border);
+    border-radius: 12px !important;
+    padding: 0.8rem;
+    color: var(--text);
+}
+
+.list-group-item .btn-group .btn {
+    color: var(--text);
+}
+
+.list-group-item strong {
+    color: var(--text);
+}
+
+.badge.bg-primary {
+    background: var(--accent) !important;
+}
 .modal-backdrop {
     position: fixed;
     inset: 0;
