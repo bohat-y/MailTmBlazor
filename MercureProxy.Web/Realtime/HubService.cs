@@ -20,7 +20,7 @@ public sealed class HubService : IAsyncDisposable
         => _hubContext.NegotiateAsync(options).AsTask();
 
     public Task SendToGroupAsync(string group, string method, object? arg, CancellationToken cancellationToken = default)
-        => _hubContext.Clients.Group(group).SendAsync(method, arg, cancellationToken);
+        => _hubContext.Clients.Group(group).SendCoreAsync(method, new[] { arg }, cancellationToken);
 
     public async ValueTask DisposeAsync()
     {

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { randomAlias, randomPassword, register, submitExpectingError } from './helpers';
+import { submitExpectingError } from './helpers';
 
 let sharedUsername: string;
 
@@ -12,8 +12,8 @@ test.describe.serial('account setup', { tag: '@account-once' }, () => {
         sharedUsername = meta.alias;
 
         await page.goto('/me');
+        await expect(page.locator('button.email-pill')).toBeVisible({ timeout: 15_000 });
         await expect(page.getByText(`${sharedUsername}@`, { exact: false })).toBeVisible();
-        await page.getByRole('button', { name: /Logout/i }).click();
     });
 
     test('fails when alias already exists (runs only once)', async ({ page }) => {
