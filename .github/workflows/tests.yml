@@ -12,7 +12,7 @@ jobs:
     env:
       DOTNET_NOLOGO: true
       PLAYWRIGHT_BASE_URL: ${{ secrets.PLAYWRIGHT_BASE_URL }}
-      PLAYWRIGHT_BROWSERS_PATH: ./.cache/ms-playwright
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.cache/ms-playwright
     steps:
       - uses: actions/checkout@v4
 
