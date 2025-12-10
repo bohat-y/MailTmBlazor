@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DOTNET_NOLOGO: true
-      PLAYWRIGHT_BASE_URL: ${{ secrets.PLAYWRIGHT_BASE_URL }}
+      PLAYWRIGHT_BASE_URL: http://localhost:5004
       PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.cache/ms-playwright
     steps:
       - uses: actions/checkout@v4
@@ -38,15 +38,7 @@ jobs:
       - name: Run unit tests
         run: dotnet test tests/MailTmBlazor.Tests/MailTmBlazor.Tests.csproj --configuration Release --no-build
 
-      - name: Ensure PLAYWRIGHT_BASE_URL is set
-        run: |
-          if [ -z "${PLAYWRIGHT_BASE_URL:-}" ]; then
-            echo "PLAYWRIGHT_BASE_URL is not configured. Set the secret or export it before running Playwright tests."
-            exit 1
-          fi
-
       - name: Serve Blazor app
-        if: env.PLAYWRIGHT_BASE_URL == 'http://localhost:5004'
         env:
           MailTm__ProxyBaseUrl: https://mailtmblazor-proxy-hneyefcycsd3geh5.switzerlandnorth-01.azurewebsites.net
         run: |
@@ -54,7 +46,6 @@ jobs:
           echo $! > spa.pid
 
       - name: Wait for local app
-        if: env.PLAYWRIGHT_BASE_URL == 'http://localhost:5004'
         run: |
           timeout 60 bash -c 'until curl -fsS http://localhost:5004 > /dev/null; do sleep 2; done'
 
