@@ -12,6 +12,7 @@ jobs:
     env:
       DOTNET_NOLOGO: true
       PLAYWRIGHT_BASE_URL: ${{ secrets.PLAYWRIGHT_BASE_URL }}
+      PLAYWRIGHT_BROWSERS_PATH: ./.cache/ms-playwright
     steps:
       - uses: actions/checkout@v4
 
@@ -57,17 +58,17 @@ jobs:
         run: |
           timeout 60 bash -c 'until curl -fsS http://localhost:5004 > /dev/null; do sleep 2; done'
 
-      - name: Install Playwright browsers
-        run: pwsh tests/MailTmBlazor.PlaywrightTests/bin/Release/net10.0/playwright.ps1 install --with-deps
-
-      - name: Run Playwright tests
-        run: dotnet test tests/MailTmBlazor.PlaywrightTests/MailTmBlazor.PlaywrightTests.csproj --configuration Release --no-build
-
       - name: Install Node Playwright dependencies
         working-directory: tests/playwright-js
         run: |
           npm install
-          npx playwright install --with-deps
+
+      - name: Install Playwright browsers (shared cache)
+        working-directory: tests/playwright-js
+        run: npx playwright install chromium firefox
+
+      - name: Run Playwright tests
+        run: dotnet test tests/MailTmBlazor.PlaywrightTests/MailTmBlazor.PlaywrightTests.csproj --configuration Release --no-build
 
       - name: Clean Playwright auth state
         working-directory: tests/playwright-js
