@@ -64,7 +64,7 @@ jobs:
           npm install
 
       - name: Install Playwright browsers (shared cache for .NET)
-        run: pwsh tests/MailTmBlazor.PlaywrightTests/bin/Release/net10.0/playwright.ps1 install chromium firefox --path "$PLAYWRIGHT_BROWSERS_PATH"
+        run: pwsh tests/MailTmBlazor.PlaywrightTests/bin/Release/net10.0/playwright.ps1 install chromium firefox
 
       - name: Install Playwright browsers (shared cache for Node)
         working-directory: tests/playwright-js
